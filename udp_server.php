@@ -104,25 +104,25 @@ function cayenne_lpp_decode($data) {
 				case 1 :
 				case 102 :
 					$field_value = array_shift ( $byte_array );
-					$output_object->${$field_name . "_" . $sensor_number} = $field_value;
+					$output_object->{$field_name . "_" . $sensor_number} = $field_value;
 					break;
 				case 2 :
 				case 3 :
 					$field_value = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
-					$output_object->${$field_name . "_" . $sensor_number} = $field_value;
+					$output_object->{$field_name . "_" . $sensor_number} = $field_value;
 					break;
 				case 103 :
 				case 115 :
 					$field_value = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10;
-					$output_object->${$field_name . "_" . $sensor_number} = $field_value;
+					$output_object->{$field_name . "_" . $sensor_number} = $field_value;
 					break;
 				case 101 :
 					$field_value = 256 * array_shift ( $byte_array ) + array_shift ( $byte_array );
-					$output_object->${$field_name . "_" . $sensor_number} = $field_value;
+					$output_object->{$field_name . "_" . $sensor_number} = $field_value;
 					break;
 				case 104 :
 					$field_value = array_shift ( $byte_array ) / 2;
-					$output_object->${$field_name . "_" . $sensor_number} = $field_value;
+					$output_object->{$field_name . "_" . $sensor_number} = $field_value;
 					break;
 				case 113 :
 					$accelerometer_object = new stdClass ();
@@ -130,21 +130,21 @@ function cayenne_lpp_decode($data) {
 					$accelerometer_object->vx = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 1000;
 					$accelerometer_object->vy = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 1000;
 					$accelerometer_object->vz = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 1000;
-					$output_object->${$field_name . "_" . $sensor_number} = $accelerometer_object;
+					$output_object->{$field_name . "_" . $sensor_number} = $accelerometer_object;
 					break;
 				case 134 :
 					$gyrometer_object = new stdClass ();
 					$gyrometer_object->vx = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
 					$gyrometer_object->vy = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
 					$gyrometer_object->vz = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
-					$output_object->${$field_name . "_" . $sensor_number} = $gyrometer_object;
+					$output_object->{$field_name . "_" . $sensor_number} = $gyrometer_object;
 					break;
 				case 136 :
 					$gps_object = new stdClass ();
 					$gps_object->longitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10000;
 					$gps_object->latitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10000;
 					$gps_object->altitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
-					$output_object->${$field_name . "_" . $sensor_number} = $gps_object;
+					$output_object->{$field_name . "_" . $sensor_number} = $gps_object;
 					break;
 				default:
 					// invalid lpp, TODO
@@ -201,7 +201,7 @@ while ( 1 ) {
 	// Receive some data
 	$r = socket_recvfrom ($sock, $buf, 512, 0, $remote_ip, $remote_port );
 	logit ( 'info', "UDP packet recieved. remote_ip: $remote_ip remote_port: $remote_port" );
-	logit ( 'debug', "UDP packet data dump: " . print_r ( $buf, true ) );
+	logit ( 'debug', "UDP packet data dump: " . print_r(unpack ( 'H*', $buf ), true) );
 	
 	// do the magic here...
 	
@@ -241,16 +241,25 @@ while ( 1 ) {
 	$ttn_object->payload_fields = $payload_fields;
 	$ttn_object->metadata = $metadata_object;
 	$ttn_object->downlink_url = 'https://integrations.thethingsnetwork.org/ttn-eu/api/v2/down/test_dron01/processid_dron?key=....'; //TODO
+
+	logit('debug', print_r($ttn_object, true));
 	
 	// profit
 	$ch = curl_init($conf ['api_url']);
 	
 	curl_setopt($ch, CURLOPT_POST, 1);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($ttn_object));
 	curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
 	
 	$result = curl_exec($ch);
-	
+	if ($result === false) {
+		logit ( 'error', "Curl call failed. Error was " . curl_error($ch) );
+	} else {
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		logit ( 'info', "Curl call was successful, return code is $http_code" );
+	}
+	curl_close($ch);
 }
 
 socket_close($sock);
