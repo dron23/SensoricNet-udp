@@ -4,7 +4,9 @@ $conf ['bind_address'] = '0.0.0.0';
 $conf ['bind_port'] = 9999;
 $conf ['base_dir'] = dirname ( __FILE__ );
 $conf ['log_filename'] = $conf ['base_dir'] . "/log/nbiot_udp.log";
+
 $conf ['api_url'] = 'http://example.com/api/ttn_update';
+$conf ['api_app_id'] = 'SensoricNet';
 
 $conf ['log_severities'] = array (
 		'emergency' => 0,
@@ -205,7 +207,8 @@ while ( 1 ) {
 	
 	// do the magic here...
 	
-	// test validity of packet
+	// test validity of packet TODO
+	// get dev_id or hardware_serial
 	
 	// decode cayenne lpp,
 	$payload_fields = cayenne_lpp_decode ($buf);
@@ -232,7 +235,7 @@ while ( 1 ) {
 	$metadata_object->gateways = array(0=>$gateway_object);
 	
 	$ttn_object = new stdClass();
-	$ttn_object->app_id = 'test_dron01'; //TODO
+	$ttn_object->app_id = $conf ['api_app_id'];
 	$ttn_object->dev_id = 'nbiot-snpm001'; //TODO
 	$ttn_object->hardware_serial = '0004A30B0021E4CC'; // TODO
 	$ttn_object->port = '1'; //TODO
