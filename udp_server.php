@@ -1,4 +1,7 @@
 <?php
+
+// default values
+
 $conf ['version'] = "v0.1"; // verze
 $conf ['bind_address'] = '0.0.0.0';
 $conf ['bind_port'] = 9999;
@@ -7,6 +10,7 @@ $conf ['log_filename'] = $conf ['base_dir'] . "/log/nbiot_udp.log";
 
 $conf ['api_url'] = 'http://example.com/api/ttn_update';
 $conf ['api_app_id'] = 'SensoricNet';
+$conf ['api_validate_ssl_cert'] = false;
 
 $conf ['log_severities'] = array (
 		'emergency' => 0,
@@ -19,6 +23,11 @@ $conf ['log_severities'] = array (
 		'debug' => 7 
 );
 $conf ['log_severity'] = 'debug';
+
+if (file_exists($conf ['base_dir'] . "/config.php")) {
+	include_once $conf ['base_dir'] . "/config.php";
+}
+
 
 /************************************************
  * constants
@@ -265,6 +274,7 @@ while ( 1 ) {
 	curl_setopt ( $ch, CURLOPT_POST, 1 );
 	curl_setopt ( $ch, CURLOPT_RETURNTRANSFER, 1 );
 	curl_setopt ( $ch, CURLOPT_POSTFIELDS, json_encode ( $ttn_object ) );
+	if ($conf['api_validate_ssl_cert'] === false) curl_setopt ( $ch, CURLOPT_SSL_VERIFYPEER, false );
 	curl_setopt ( $ch, CURLOPT_HTTPHEADER, array (
 			'Content-Type: application/json' 
 	) );
