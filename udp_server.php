@@ -84,7 +84,7 @@ function logit($severity, $text) {
  * @param string $data
  */
 function udp_packet_decode($data) {
-	global $lpp_definition;
+	global $lpp_definition, $dev_id;
 	
 	$byte_array = unpack ( 'C*', $data );
 	
@@ -94,9 +94,10 @@ function udp_packet_decode($data) {
 	// [dev_id]/0[lpp_data]
 	
 	// precti dev_id
+	$dev_id='';
 	do {
 		$char = array_shift ( $byte_array );
-		$dev_id .= $char;
+		$dev_id .= chr($char);
 	} while ( $char != 0 );
 	$dev_id = trim ( $dev_id );
 	
