@@ -234,7 +234,7 @@ while ( 1 ) {
 	
 	// create ttn json structure and call SensoricNet api
 	$gateway_object = new stdClass ();
-	$gateway_object->gtw_id = 'none'; // TODO
+	$gateway_object->gtw_id = 'Vodafone_NBIot';
 	$gateway_object->timestamp = $date->format ( 'U' );
 	$gateway_object->time = $date->format ( 'Y-m-d\TH:i:s.vP' ); // '2018-03-08T22:20:35.944604Z'; TODO
 	$gateway_object->channel = '0'; // TODO
