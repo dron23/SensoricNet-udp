@@ -20,11 +20,9 @@ $conf ['log_severities'] = array (
 );
 $conf ['log_severity'] = 'debug';
 
-/**
- * **********************************************
+/************************************************
  * constants
- * **********************************************
- */
+ ************************************************/
 
 // #define LPP_DIGITAL_INPUT 0 // 1 byte
 $lpp_definition [0] ['name'] = 'digital_in';
@@ -81,23 +79,34 @@ function logit($severity, $text) {
 }
 
 /**
- * Dekoduje data z cayenne lpp do pole
+ * Dekoduje nas nbiot udp packet s cayenne lpp daty do objektu
  *
  * @param string $data
  */
-function cayenne_lpp_decode($data) {
+function udp_packet_decode($data) {
 	global $lpp_definition;
 	
 	$byte_array = unpack ( 'C*', $data );
 	
 	$output_object = new stdClass ();
 	
+	// struktura udp packetu je tato:
+	// [dev_id]/0[lpp_data]
+	
+	// precti dev_id
+	do {
+		$char = array_shift ( $byte_array );
+		$dev_id .= $char;
+	} while ( $char != 0 );
+	$dev_id = trim ( $dev_id );
+	
+	// dekoduj lpp
 	while ( count ( $byte_array ) > 0 ) {
 		$sensor_number = array_shift ( $byte_array );
 		$field_code = array_shift ( $byte_array );
 		
 		// existuje tento lpp key?
-		if (array_key_exists($field_code, $lpp_definition)) {
+		if (array_key_exists ( $field_code, $lpp_definition )) {
 			$field_name = $lpp_definition [$field_code] ['name'];
 			$field_size = $lpp_definition [$field_code] ['size'];
 			
@@ -148,23 +157,22 @@ function cayenne_lpp_decode($data) {
 					$gps_object->altitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
 					$output_object->{$field_name . "_" . $sensor_number} = $gps_object;
 					break;
-				default:
-					// invalid lpp, TODO
+				default :
+				// invalid lpp, TODO
 			}
 		} else {
-			logit ('warning', "lpp key $field_code does not exist");
+			logit ( 'warning', "lpp key $field_code does not exist" );
 			// co ted? prohledavat dal, nebo failnout?
 		}
 	}
-
-	logit('debug', print_r($output_object, true));
+	
+	// logit('debug', print_r($output_object, true));
 	return $output_object;
 }
 
-
 /************************************************************
  * main
- ************************************************************/
+ * **********************************************************/
 
 // Reduce errors
 error_reporting ( ~ E_WARNING );
@@ -201,68 +209,73 @@ logit ( 'info', "Listening on " . $conf ['bind_address'] . ":" . $conf ['bind_po
 while ( 1 ) {
 	
 	// Receive some data
-	$r = socket_recvfrom ($sock, $buf, 512, 0, $remote_ip, $remote_port );
+	$r = socket_recvfrom ( $sock, $buf, 512, 0, $remote_ip, $remote_port );
 	logit ( 'info', "UDP packet recieved. remote_ip: $remote_ip remote_port: $remote_port" );
-	logit ( 'debug', "UDP packet data dump: " . print_r(unpack ( 'H*', $buf ), true) );
+	logit ( 'debug', "UDP packet data dump: " . print_r ( unpack ( 'H*', $buf ), true ) );
+	
+	$date = new DateTime ();
 	
 	// do the magic here...
 	
 	// test validity of packet TODO
-	// get dev_id or hardware_serial
 	
-	// decode cayenne lpp,
-	$payload_fields = cayenne_lpp_decode ($buf);
+	// decode udp data packet
+	$payload_fields = udp_packet_decode ( $buf );
 	
 	// create ttn json structure and call SensoricNet api
-	$gateway_object = new stdClass();
-	$gateway_object->gtw_id = 'eui-****************'; //TODO
-	$gateway_object->timestamp = '74464988'; //TODO
-	$gateway_object->time = '2018-03-08T22:20:35.944604Z'; //TODO
-	$gateway_object->channel = '3'; //TODO
-	$gateway_object->rssi = '-33'; //TODO
-	$gateway_object->snr = '8'; //TODO
-	$gateway_object->rf_chain = '0'; //TODO
-	$gateway_object->latitude = '49.93467'; //TODO
-	$gateway_object->longitude = '17.89626'; //TODO
-	$gateway_object->altitude = '275'; //TODO
+	$gateway_object = new stdClass ();
+	$gateway_object->gtw_id = 'none'; // TODO
+	$gateway_object->timestamp = $date->format ( 'U' );
+	$gateway_object->time = $date->format ( 'Y-m-d\TH:i:s.vP' ); // '2018-03-08T22:20:35.944604Z'; TODO
+	$gateway_object->channel = '0'; // TODO
+	$gateway_object->rssi = '0'; // TODO
+	$gateway_object->snr = '0'; // TODO
+	$gateway_object->rf_chain = '0'; // TODO
+	$gateway_object->latitude = '0'; // TODO
+	$gateway_object->longitude = '0'; // TODO
+	$gateway_object->altitude = '0'; // TODO
 	
-	$metadata_object = new stdClass();
-	$metadata_object->time = '2018-03-08T22:20:35.97081415Z'; //TODO
-	$metadata_object->frequency = '867.1'; //TODO
+	$metadata_object = new stdClass ();
+	$metadata_object->time = $date->format ( 'Y-m-d\TH:i:s.vP' ); // TODO
+	$metadata_object->frequency = '900'; // TODO
 	$metadata_object->modulation = 'NBIoT';
-	$metadata_object->data_rate = 'SF11BW125'; //TODO
-	$metadata_object->coding_rate = '4/5'; //TODO
-	$metadata_object->gateways = array(0=>$gateway_object);
+	$metadata_object->data_rate = ''; // TODO
+	$metadata_object->coding_rate = ''; // TODO
+	$metadata_object->gateways = array (
+			0 => $gateway_object 
+	);
 	
-	$ttn_object = new stdClass();
+	$ttn_object = new stdClass ();
 	$ttn_object->app_id = $conf ['api_app_id'];
-	$ttn_object->dev_id = 'nbiot-snpm001'; //TODO
-	$ttn_object->hardware_serial = '0004A30B0021E4CC'; // TODO
-	$ttn_object->port = '1'; //TODO
-	$ttn_object->counter = '27'; //TODO
-	$ttn_object->payload_raw = 'AWcBEAJzJhADaAAEAgHIBQICAwYCAk8HiAf92AC+4QAAyA=='; //TODO
+	$ttn_object->dev_id = $dev_id;
+	$ttn_object->hardware_serial = '0000000000000000'; // TODO
+	$ttn_object->port = '1'; // TODO
+	$ttn_object->counter = '0'; // TODO
+	$ttn_object->payload_raw = ''; // TODO
 	$ttn_object->payload_fields = $payload_fields;
 	$ttn_object->metadata = $metadata_object;
-	$ttn_object->downlink_url = 'https://integrations.thethingsnetwork.org/ttn-eu/api/v2/down/test_dron01/processid_dron?key=....'; //TODO
-
-	logit('debug', print_r($ttn_object, true));
+	$ttn_object->downlink_url = ''; // TODO
+	
+	logit ( 'debug', print_r ( $ttn_object, true ) );
 	
 	// profit
-	$ch = curl_init($conf ['api_url']);
+	$ch = curl_init ( $conf ['api_url'] );
 	
-	curl_setopt($ch, CURLOPT_POST, 1);
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($ttn_object));
-	curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+	curl_setopt ( $ch, CURLOPT_POST, 1 );
+	curl_setopt ( $ch, CURLOPT_RETURNTRANSFER, 1 );
+	curl_setopt ( $ch, CURLOPT_POSTFIELDS, json_encode ( $ttn_object ) );
+	curl_setopt ( $ch, CURLOPT_HTTPHEADER, array (
+			'Content-Type: application/json' 
+	) );
 	
-	$result = curl_exec($ch);
+	$result = curl_exec ( $ch );
 	if ($result === false) {
-		logit ( 'error', "Curl call failed. Error was " . curl_error($ch) );
+		logit ( 'error', "Curl call failed. Error was " . curl_error ( $ch ) );
 	} else {
-		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$http_code = curl_getinfo ( $ch, CURLINFO_HTTP_CODE );
 		logit ( 'info', "Curl call was successful, return code is $http_code" );
 	}
-	curl_close($ch);
+	curl_close ( $ch );
 }
 
-socket_close($sock);
+socket_close ( $sock );
