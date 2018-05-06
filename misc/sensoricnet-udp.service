@@ -1,0 +1,14 @@
+[Unit]
+Description=Sensoricnet nbiot udp packet receiver
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/SensoricNet-udp
+ExecStart=/usr/bin/php /opt/SensoricNet-udp/udp_server.php
+User=sn-udp
+Group=sn-udp
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+

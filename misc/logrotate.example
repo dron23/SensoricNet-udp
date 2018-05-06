@@ -1,0 +1,8 @@
+/opt/SensoricNet-udp/log/nbiot_udp.log {
+    rotate 4
+    weekly
+    compress
+    missingok
+    su sn-udp sn-udp
+    create sn-udp sn-udp
+}
