@@ -12,6 +12,10 @@ $conf ['api_url'] = 'http://example.com/api/ttn_update';
 $conf ['api_app_id'] = 'SensoricNet';
 $conf ['api_validate_ssl_cert'] = false;
 
+// when defined, use basic auth
+//$conf['api_auth_user'] = 'username';
+//$conf['api_auth_pass'] = 'password';
+
 $conf ['log_severities'] = array (
 		'emergency' => 0,
 		'alert' => 1,
@@ -272,12 +276,14 @@ while ( 1 ) {
 	$ch = curl_init ( $conf ['api_url'] );
 	
 	curl_setopt ( $ch, CURLOPT_POST, 1 );
-	curl_setopt ( $ch, CURLOPT_RETURNTRANSFER, 1 );
 	curl_setopt ( $ch, CURLOPT_POSTFIELDS, json_encode ( $ttn_object ) );
+	curl_setopt ( $ch, CURLOPT_RETURNTRANSFER, 1 );
 	if ($conf['api_validate_ssl_cert'] === false) curl_setopt ( $ch, CURLOPT_SSL_VERIFYPEER, false );
 	curl_setopt ( $ch, CURLOPT_HTTPHEADER, array (
 			'Content-Type: application/json' 
 	) );
+	if ($conf['api_auth_user'] and $conf['api_auth_pass']) curl_setopt ( $ch, CURLOPT_USERPWD, $conf['api_auth_user'] . ":" . $conf['api_auth_pass'] );
+//	curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 	
 	$result = curl_exec ( $ch );
 	if ($result === false) {
