@@ -166,8 +166,8 @@ function udp_packet_decode($data) {
 					break;
 				case 136 :
 					$gps_object = new stdClass ();
-					$gps_object->longitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10000;
 					$gps_object->latitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10000;
+					$gps_object->longitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10000;
 					$gps_object->altitude = (65536 * array_shift ( $byte_array ) + 256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 100;
 					$output_object->{$field_name . "_" . $sensor_number} = $gps_object;
 					break;
