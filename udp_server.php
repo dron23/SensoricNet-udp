@@ -138,7 +138,9 @@ function udp_packet_decode($data) {
 					break;
 				case 103 :
 				case 115 :
-					$field_value = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array )) / 10;
+					$field_value = (256 * array_shift ( $byte_array ) + array_shift ( $byte_array ));
+					if ($field_value >= 32768) $field_value = $field_value - 65536;
+					$field_value = $field_value / 10;
 					$output_object->{$field_name . "_" . $sensor_number} = $field_value;
 					break;
 				case 101 :
