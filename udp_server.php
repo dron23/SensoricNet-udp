@@ -226,7 +226,7 @@ while ( 1 ) {
 	
 	// Receive some data
 	$r = socket_recvfrom ( $sock, $buf, 512, 0, $remote_ip, $remote_port );
-	logit ( 'info', "UDP packet recieved. remote_ip: $remote_ip remote_port: $remote_port" );
+	logit ( 'info', "UDP packet recieved. Remote IP: ".$remote_ip.", remote port: ".$remote_port.", payload length: ".strlen($buf) );
 	logit ( 'debug', "UDP packet data dump: " . print_r ( unpack ( 'H*', $buf ), true ) );
 	
 	$date = new DateTime ();
@@ -267,7 +267,7 @@ while ( 1 ) {
 	$ttn_object->hardware_serial = '0000000000000000'; // TODO
 	$ttn_object->port = '1'; // TODO
 	$ttn_object->counter = '0'; // TODO
-	$ttn_object->payload_raw = ''; // TODO
+	$ttn_object->payload_raw = base64_encode($buf);
 	$ttn_object->payload_fields = $payload_fields;
 	$ttn_object->metadata = $metadata_object;
 	$ttn_object->downlink_url = ''; // TODO
