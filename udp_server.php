@@ -12,6 +12,11 @@ $conf ['api_url'] = 'http://example.com/api/ttn_update';
 $conf ['api_app_id'] = 'SensoricNet';
 $conf ['api_validate_ssl_cert'] = false;
 
+$conf['dbhost'] = "127.0.0.1";
+$conf['dbname'] = "sensoricnet";
+$conf['dbuser'] = "sensoricnet";
+$conf['dbpasswd'] = "";
+
 // when defined, use basic auth
 //$conf['api_auth_user'] = 'username';
 //$conf['api_auth_pass'] = 'password';
@@ -201,6 +206,18 @@ if (! $log) {
 
 logit ( 'info', "SensoricNet UDP reciever version " . $conf ['version'] );
 
+// connect to db
+try {
+	$db = new PDO("mysql:host=".$conf['dbhost'].";dbname=".$conf['dbname'].";charset=utf8", $conf['dbuser'], $conf['dbpasswd']);
+	$db->exec("set names utf8");
+	logit ("info", "pripojeni k db je ok");
+	
+} catch (PDOException $e) {
+	logit ("error", "Chyba pri pripojeni k databazi. ".$e->getMessage());
+	die();
+}
+
+
 // Create a UDP socket
 if (! ($sock = socket_create ( AF_INET, SOCK_DGRAM, 0 ))) {
 	$errorcode = socket_last_error ();
@@ -292,9 +309,51 @@ while ( 1 ) {
 		logit ( 'error', "Curl call failed. Error was " . curl_error ( $ch ) );
 	} else {
 		$http_code = curl_getinfo ( $ch, CURLINFO_HTTP_CODE );
-		logit ( 'info', "Curl call was successful, return code is $http_code" );
+		if ($http_code != '200') {
+			logit ( 'warning', "Curl call was successful but return code is $http_code" );
+		} else {
+			logit ( 'info', "Curl call was successful, return code is $http_code" );
+		}
 	}
 	curl_close ( $ch );
+	
+	// zkontroluj jestli neni pro toto devId naplanovany nejaky downstream packet
+	$query = $db->prepare ('
+			SELECT id, packet FROM `downstream`
+			WHERE sensorDevId = :dev_id LIMIT 1
+		');
+	$query->bindParam ( ':dev_id', $dev_id);
+	$query->execute ();
+	
+	if ($result = $query->fetch ( PDO::FETCH_ASSOC)) {
+		// mame downstream packet, je treba ho poslat...
+		$downstream_id = $result['id'];
+		$packet = $result['packet'];
+
+		logit ( 'debug', "downstream packet data dump: " . print_r ( unpack ( 'H*', $packet ), true ) );
+		
+		// posilame na ip addr a port, ze ktereho udp packet prisel
+		$retval = socket_sendto($sock, $packet, strlen($packet), 0, $remote_ip, $remote_port);
+		if ($retval === false) {
+			logit ( 'error', "Cannot send udp downstream message id $downstream_id for devId $dev_id" );
+		} else {
+			logit ( 'info', "Successfully sent udp downstream message id $downstream_id for devId $dev_id" );
+		
+			// smazeme tento downstream z tabulky
+			$query = $db->prepare ('
+				DELETE FROM `downstream`
+				WHERE id = :downstream_id
+			');
+			$query->bindParam ( ':downstream_id', $downstream_id);
+			$result = $query->execute ();
+			
+			if ($result == 1) {
+				logit ( 'info', "Successfully deleted downstream message id $downstream_id for devId $dev_id from db" );
+			} else {
+				logit ( 'error', "Failed to delete downstream message id $downstream_id for devId $dev_id from db" );
+			}
+			
+		}
+	}
 }
 
-socket_close ( $sock );
