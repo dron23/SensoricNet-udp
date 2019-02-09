@@ -16,6 +16,7 @@ $conf['dbhost'] = "127.0.0.1";
 $conf['dbname'] = "sensoricnet";
 $conf['dbuser'] = "sensoricnet";
 $conf['dbpasswd'] = "";
+$conf['dbreconnection'] = 10;
 
 // when defined, use basic auth
 //$conf['api_auth_user'] = 'username';
@@ -191,12 +192,62 @@ function udp_packet_decode($data) {
 	return $output_object;
 }
 
+
+
+/**
+ * s periodou nastavenou v konfiguraci testuje pripojeni k db, pripadne se pokusi o rekonekci
+ * 
+ * @throws PDOException
+ * @return boolean
+ */
+function test_db_connection() {
+	global $conf, $db, $last_time;
+	
+	$time_now = time();
+	$last_test = $time_now - $last_time;
+	
+	if (($time_now - $last_time) > $conf['dbreconnection']) {
+		$last_time = time();
+		
+		if ($db instanceof \PDO) {
+			try {
+				$query = $db->query ('SELECT 1');
+				logit ('debug', print_r($query, true));
+				if ($query) {
+					$query->execute ();
+					logit ("info", "Db connection is alive.");
+					return true;
+				} else throw new PDOException("cannot execute query");
+			} catch(PDOException $e) {
+				logit ("warning", "Db connection is broken. ".$e->getMessage());
+				$db = null;
+			}
+		} else {
+			// reconnect to db
+			try {
+				logit ("info", "Trying to reconnected to db...");
+				$db = new PDO("mysql:host=".$conf['dbhost'].";dbname=".$conf['dbname'].";charset=utf8", $conf['dbuser'], $conf['dbpasswd']);
+				$db->exec("set names utf8");
+				logit ("info", "Reconnected to db.");
+				return true;
+			} catch (PDOException $e) {
+				logit ("error", "Db reconnection error. ".$e->getMessage());
+			}
+		}
+	} else {
+		logit ("debug", "Not testing db connection because its just ".$last_test."s from last test.");
+		if ($db instanceof \PDO) return true;
+	}
+	return false;
+}
+
+
 /************************************************************
  * main
  * **********************************************************/
 
 // Reduce errors
-error_reporting ( ~ E_WARNING );
+error_reporting ( E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
 
 // logovaci soubor
 $log = fopen ( $conf ['log_filename'], "a" );
@@ -206,15 +257,15 @@ if (! $log) {
 
 logit ( 'info', "SensoricNet UDP reciever version " . $conf ['version'] );
 
+$last_time = time();
+
 // connect to db
 try {
 	$db = new PDO("mysql:host=".$conf['dbhost'].";dbname=".$conf['dbname'].";charset=utf8", $conf['dbuser'], $conf['dbpasswd']);
 	$db->exec("set names utf8");
 	logit ("info", "pripojeni k db je ok");
-	
 } catch (PDOException $e) {
 	logit ("error", "Chyba pri pripojeni k databazi. ".$e->getMessage());
-	die();
 }
 
 
@@ -224,7 +275,7 @@ if (! ($sock = socket_create ( AF_INET, SOCK_DGRAM, 0 ))) {
 	$errormsg = socket_strerror ( $errorcode );
 	
 	logit ( 'emergency', "Couldn't create socket: [$errorcode] $errormsg" );
-	die ();
+	die ("Couldn't create socket: [$errorcode] $errormsg"."\n");
 }
 
 // Bind the source address
@@ -233,7 +284,7 @@ if (! socket_bind ( $sock, $conf ['bind_address'], $conf ['bind_port'] )) {
 	$errormsg = socket_strerror ( $errorcode );
 	
 	logit ( 'emergency', "Couldn't bind socket: [$errorcode] $errormsg" );
-	die ();
+	die ("Couldn't bind socket: [$errorcode] $errormsg"."\n");
 }
 
 logit ( 'info', "Listening on " . $conf ['bind_address'] . ":" . $conf ['bind_port'] );
@@ -318,42 +369,60 @@ while ( 1 ) {
 	curl_close ( $ch );
 	
 	// zkontroluj jestli neni pro toto devId naplanovany nejaky downstream packet
-	$query = $db->prepare ('
-			SELECT id, packet FROM `downstream`
-			WHERE sensorDevId = :dev_id LIMIT 1
-		');
-	$query->bindParam ( ':dev_id', $dev_id);
-	$query->execute ();
 	
-	if ($result = $query->fetch ( PDO::FETCH_ASSOC)) {
-		// mame downstream packet, je treba ho poslat...
-		$downstream_id = $result['id'];
-		$packet = $result['packet'];
-
-		logit ( 'debug', "downstream packet data dump: " . print_r ( unpack ( 'H*', $packet ), true ) );
-		
-		// posilame na ip addr a port, ze ktereho udp packet prisel
-		$retval = socket_sendto($sock, $packet, strlen($packet), 0, $remote_ip, $remote_port);
-		if ($retval === false) {
-			logit ( 'error', "Cannot send udp downstream message id $downstream_id for devId $dev_id" );
-		} else {
-			logit ( 'info', "Successfully sent udp downstream message id $downstream_id for devId $dev_id" );
-		
-			// smazeme tento downstream z tabulky
+	if (test_db_connection()) {
+	
+		try {
+			logit ('debug', "making sql query");
 			$query = $db->prepare ('
-				DELETE FROM `downstream`
-				WHERE id = :downstream_id
+				SELECT id, packet FROM `downstream`
+				WHERE sensorDevId = :dev_id LIMIT 1
 			');
-			$query->bindParam ( ':downstream_id', $downstream_id);
-			$result = $query->execute ();
-			
-			if ($result == 1) {
-				logit ( 'info', "Successfully deleted downstream message id $downstream_id for devId $dev_id from db" );
-			} else {
-				logit ( 'error', "Failed to delete downstream message id $downstream_id for devId $dev_id from db" );
-			}
-			
+			$query->bindParam ( ':dev_id', $dev_id);
+			$query->execute ();
+			$result = $query->fetch ( PDO::FETCH_ASSOC );
+		} catch (PDOException $e) {
+			logit ("error", "Chyba pri pripojeni k databazi. ".$e->getMessage());
+			$result = false;
 		}
+		
+		if ($result) {
+			// mame downstream packet, je treba ho poslat...
+			$downstream_id = $result['id'];
+			$packet = $result['packet'];
+	
+			logit ( 'debug', "downstream packet data dump: " . print_r ( unpack ( 'H*', $packet ), true ) );
+			
+			// posilame na ip addr a port, ze ktereho udp packet prisel
+			$retval = socket_sendto($sock, $packet, strlen($packet), 0, $remote_ip, $remote_port);
+			if ($retval === false) {
+				logit ( 'error', "Cannot send udp downstream message id $downstream_id for devId $dev_id" );
+			} else {
+				logit ( 'info', "Successfully sent udp downstream message id $downstream_id for devId $dev_id" );
+	
+				try {
+					// smazeme tento downstream z tabulky
+					$query = $db->prepare ('
+						DELETE FROM `downstream`
+						WHERE id = :downstream_id
+					');
+					$query->bindParam ( ':downstream_id', $downstream_id);
+					$result = $query->execute ();
+				} catch (PDOException $e) {
+					logit ("error", "Chyba pri pripojeni k databazi. ".$e->getMessage());
+					$result = false;
+				}
+				
+				if ($result == 1) {
+					logit ( 'info', "Successfully deleted downstream message id $downstream_id for devId $dev_id from db" );
+				} else {
+					logit ( 'error', "Failed to delete downstream message id $downstream_id for devId $dev_id from db" );
+				}
+				
+			}
+		}
+	} else {
+		logit ('warning', "not connected to db...");
 	}
 }
 
